@@ -1,0 +1,209 @@
+---
+title: "Applied Network Analysis Assignment 2"
+author: "Maren Rieker"
+date: "2023-04-19"
+output: html_document
+---
+
+```{r, include=FALSE, echo=FALSE}
+library(igraph)
+library(tidyverse)
+```
+
+
+For this assignment, I am using a data set containing interactions between characters in the TV show [***Breaking Bad***](https://figshare.com/articles/dataset/TV_Series_Networks_of_characters/2199646/11?file=7353802). It contains a static, cumulative conversational network with interactions from all episodes of seasons 1 and 2. In order to make sense of some results and contextualise them with the plot, I have consulted the [Fandom wiki](https://breakingbad.fandom.com/wiki/Breaking_Bad_Wiki) of the show.
+
+```{r}
+network_bb <- read_graph("BB_cum.graphml", format = "graphml")
+```
+
+### Getting to know the data
+```{r}
+vertex_attr(network_bb)
+V(network_bb)$label
+V(network_bb)$name
+#network_bb[]
+edge_attr_names(network_bb)
+edge_attr(network_bb)
+```
+
+## Network Properties
+```{r}
+vcount(network_bb)
+ecount(network_bb)
+```
+The network has 167 nodes and 306 edges. This means that in the first two seasons of *Breaking Bad*, 167 characters interact in 306 ways with each other.
+
+Size of the network can be identified via its diameter.
+```{r}
+diameter(network_bb, directed = FALSE, weights = NA)
+```
+```{r}
+#in order to show the names of the characters representing a node, the attribute name has to be assigned from label
+vertex_attr(network_bb, "name") <- V(network_bb)$label
+get_diameter(network_bb, directed = FALSE, weights = NA)
+```
+
+The longest path between two nodes in the network is seven edges long and goes from Marco Salamanca, a cartel hitman, through an arms dealer to his cousin Leonel, to meth mastermind Gustavo Fring, to DEA agent Hank Schrader, Carmen Molina, a concerned parent to Police Officer #1.
+Distribution of path length would be an alternative measure of the network size. It is less likely to be skewed by outliers.
+
+Next, I will determine the mean distance between two nodes.
+```{r}
+mean_distance(network_bb, directed = FALSE, weights = NA)
+```
+
+```{r}
+distances <- distances(network_bb, weights = NA)
+distances[1:10, 1:10]
+```
+
+Edge density is calculated by dividing the number of links by the number of all possible links.
+```{r}
+edge_density(network_bb)
+
+#test if the graph is not a multigraph because then the edge density would be useless
+is_simple(network_bb)
+```
+
+The network is quite sparse, considering that the density can be between 0 and 1. The low density indicates that the characters are overall more loosely connected to each other. If this connectedness is equally sparsely distributed throughout the network or if there are some characters that have many connections while other characters have only a few will be analysed in another part of this assignment.
+
+```{r}
+#get.adjacency(network_bb)
+```
+
+To get a first impression of the network, a plot.
+```{r}
+#get index nr of Walter White to make him the root of the tree plot
+node_label <- "Walter White"
+which(V(network_bb)$name == node_label)
+
+plot(network_bb, 
+     layout = layout_as_tree(network_bb, root = 7), 
+     vertex.size = 3,
+     vertex.label = NA,
+     main = "Breaking Bad Tree Layout")
+
+plot(network_bb, 
+     layout = layout_with_kk, 
+     vertex.size = 3,
+     vertex.label = NA,
+     main = "Breaking Bad Kanada Kawai Layout")
+
+plot(network_bb,
+     layout = layout_with_fr(network_bb),
+     vertex.size = 3,
+     vertex.label = NA,
+     main = "Breaking Bad ")
+```
+
+A more informative plot by the creators of the data set can be found [here](https://figshare.com/articles/dataset/TV_Series_Networks_of_characters/2199646/11?file=4128649).
+
+## Degree Distribution and Centralities
+
+```{r}
+#plot degree distribution
+degree_bb <- degree(network_bb)
+degree_hist <- hist(degree_bb, 
+                    main = "Degree Distribution", 
+                    xlab = "Degree", 
+                    breaks = 30,
+                    col = "pink")
+text(degree_hist$mids, degree_hist$counts, labels = degree_hist$counts, adj = c(0.5, -0.5))
+```
+
+As the network data is undirected, I can not distinguish between in- and out degree.
+The distribution clearly follows the power law, as is to be expected in the analysis of interactions in a TV show with a few main characters. It can be assumed that these main characters are the hubs.I would set the treshold ok k = 30 to classify a person as a hub, therefore there are four in the data set.
+
+Now, I want to see which characters have the most connections to other people, so I'll have a look at the degrees of the nodes. First, I check the degree of some main characters that came to mind.
+
+```{r}
+#the data only contains labels which identify the persons, but the degree function needs the attribute "name" to look up specific people
+vertex_attr(network_bb, "name") <- V(network_bb)$label
+
+#there we go
+degree(network_bb, v = c("Walter White", "Skyler White", "Jesse Pinkman", "Saul Goodman", "Ted Beneke", "Gustavo Fring", "Hank Schrader", "Marie Schrader", "Mike Ehrmantraut", "Walter White Jr."))
+```
+
+The degrees of the respective characters are in line with my expectations. In the further analysis, I will keep a closer eye on the connections of Ted (Skyler's boss and affair partner in season 3 - unfortunately not covered in this data set), Mike (the fixer), and Walter White Jr. (the 15 year old son of Skyler and Walter). I think these characters are interesting from a storyline standpoint, as Ted is not in the drug business, Mike is crucial to the drug storyline but not involved with the main characters on a private level, and having a closer look at Walter Junior's relationships might give an indication how well Walter White managed to keep his worlds separate from each other in the beginning of the show.
+
+But first, a look at different centrality measures with a focus on direct connections between nodes:  
+- Degree (how many connections one node has)  
+- Closeness (the distance between a node and all other nodes)  
+- Betweenness (how many short connection a node has, which indicates information flows in social networks)  
+
+```{r}
+#degree, sorted from highest to lowest
+sort(degree(network_bb), decreasing = TRUE)
+
+#closeness, sorted from highest to lowest
+sort(closeness(network_bb), decreasing = TRUE)
+
+#betweenness, sorted from highest to lowest
+sort(betweenness(network_bb), decreasing = TRUE)
+```
+The *degree* shows that Walter White has the most direct connections to other characters, followed by Jesse Pinkman and Hank Schrader. In the top 10 of the degree, there are two DEA officers, Hank Schrader and Steven Gomez. A surprise to me was that Carmen Molina (a character I personally did not remember, she's working at the high school where Walter teaches chemistry and which is attended by Walter Jr.) is in there and has the same degree as Gustavo Frings.
+
+The *closeness* measure can be interpreted as the number of steps required to reach every node starting at a certain node. A higher value here means less centrality, which in the context of a social network means that information takes longer to reach the people with higher centrality values. The sort function did not work correctly in this case, but it can be seen that Jesse's closeness value is a bit lower than Walter's, and Hank's is lower than both.
+
+*Betweenness* helps to identify "vulnerable" points in a network, as it shows the shortest paths through one node in relation to all shortest paths in the network. If much information goes through a node, cutting it out of the network would disturb the flow of information considerably. For the Breaking Bad network, it is interesting (and actually a bit suspicious) that "Nurse #2", someone called Jock and his friend seem to have some of the highest betweenness centralities, as they are not important characters at all. Values are very unequally distributed, with most characters having a betweenness centrality of zero and the top 13 one in the four digits with Walter White topping the list at 7138.
+
+
+
+There are also centrality measures that focus on the entire network structure:  
+- Eigenvector (takes the importance of the nodes a given node is connected to into account)  
+- Katz (not available for igraph, but this measure could provide very interesting insights into the social dynamics of the show, as it considers the proximity of neighbourhoods)  
+- PageRank (shows the centrality of a node by simulating a random walker along the network - the higher the probability of the random walker is to appear on a node, the more central it is)
+
+```{r}
+#eigenvector centrality, sorted from highest to lowest
+sort(eigen_centrality(network_bb)$vector, decreasing = TRUE)
+
+#pagerank, sorted from highest to lowest
+sort(page_rank(network_bb)$vector, decreasing = TRUE)
+```
+*Eigenvector centrality* does not only take the number of connections of a given node into account, but also the importance of the nodes to which it is connected. A high Eigenvector centrality means that a node is connected to other highly influential nodes in the network and therefore has significant influence on the whole network. Walter White has the highest Eigenvector centrality, meaning that he is interacting all of the most important characters in the show and being the most important one himself. This also explains while Marie Schrader has a high Eigenvector centrality, even though she's not too well connected according to the node-focused measures. She has lots of interactions with Hank, her husband, and Walter.
+The *PageRank* algorithm contains a random element in its calculations, representing the probability that a random walker in the network will reach a certain node. A high score indicates relevance of a node as the random walker passes through it with a high probability, making it central.
+
+# Clusters and Communities
+
+```{r}
+components(network_bb)$no
+components(network_bb)$csize
+```
+
+The network consists of five different components, where each component consists of nodes which are connected to each other, but not to any other nodes. As is shown by their size, they are very unevenly sized with one component containing almost all nodes (it can be assumed that the storyline happens between the characters here). The other components only consist of 2 or 3 nodes, implying that these are probably interactions between characters that are not part of the plot, as they do not interact with the persons the show is about.
+
+I will exclude these components for the following analysis.
+```{r}
+main_bb <- decompose(network_bb, min.vertices = 5)
+```
+
+Now, it would make most sense to apply different algorithms to detect communities within the network that contains the characters which are important to the story (the main_bb object that was the result of the exclusion process for separate components). This process unfortunately did not work as intended, so I will continue with the original network structure.
+
+*Infomap* tries to map the information flow in the network, suitable for this specific one
+```{r}
+info <- cluster_infomap(network_bb)
+plot(info, network_bb, vertex.label = NA, vertex.size = 3)
+```
+
+*Newman-Girvan* based on edge betweenness
+```{r}
+ng <- cluster_edge_betweenness(network_bb, weights = NULL, directed = FALSE, modularity = TRUE)
+plot(ng, network_bb, vertex.label = NA, vertex.size = 3)
+```
+
+*Fast and greedy* optimises modularity score
+```{r}
+fg <- cluster_fast_greedy(network_bb)
+plot(fg, network_bb, vertex.label = NA, vertex.size = 3)
+```
+
+
+
+
+
+
+
+
+
+
